@@ -281,6 +281,16 @@ Cloud API Groups are now available to businesses with an Official Business Accou
 
 Meta's Calling API opens a 24-hour customer service window when a **user calls** the business, not only when they message. Bridge does not surface call events today, which means a window can be open without your system knowing.
 
+### Handover events (`messaging_handovers`)
+
+The companion signal to standby webhooks. Where `standby.*` carries the **content** you observe while passive, `messaging_handovers` carries the **event** telling you control changed hands between Meta Business Agent and your app.
+
+This is more reliable than inferring handover state from traffic. Inference has a real gap: if a conversation is handed back to you but the customer does not message again, you cannot tell you have control until their next message arrives.
+
+We have subscribed to the field, but Meta's public documentation does not yet specify its payload shape for WhatsApp. Rather than ship a parser built on assumption, we log the first real payload and will write the parser from actual data. It will appear here with its event names once confirmed.
+
+> **Worth copying:** whatever your webhook handler looks like, it is almost certainly a chain of `if (field === ...)` checks — which means any field Meta adds falls through **silently**. No error, no log, nothing. Add a fallback branch that logs unrecognised fields once, with the full payload. It costs a few lines and it is how you find out about a new Meta field in days rather than months.
+
 ---
 
 ## Meta platform calendar
