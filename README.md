@@ -1,7 +1,7 @@
 # WasapFlow Bridge — Changelog
 
-**Current API Version:** 2.2.0
-**Last Updated:** 8 August 2026
+**Current API Version:** 2.3.0
+**Last Updated:** 11 August 2026
 
 This changelog covers **two** kinds of change:
 
@@ -90,6 +90,88 @@ It matters to you for two reasons:
 - Meta now publishes a direct cost comparison between Business Agent and third-party AI solutions. If you resell an AI product, this is a competitor with published pricing.
 
 Meta reference: [Conversations 2026 announcement](https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing/non-template-messages)
+
+---
+
+## 2.3.0 — 11 August 2026
+
+**No endpoint changed in this release.** It documents a requirement Meta has already made mandatory, and a data-model trap that will silently corrupt delivery data in most integrations built on this platform — including ours, until we fixed it.
+
+### Action required — stop treating the WhatsApp number as the customer's phone number
+
+Meta states plainly: *"Supporting business-scoped user IDs (BSUID) is **required** for all partners and directly-integrated businesses on the WhatsApp Business Platform."*
+
+Bridge has been forwarding `bsuid` on inbound messages and `recipient_bsuid` on status events since 2.0. What changes now is what you must **do** with it.
+
+**The problem.** Once a customer adopts a WhatsApp username, Meta may omit their phone number from the webhook entirely. Per Meta's docs, `wa_id`, `from`, and `recipient_id` are *"omitted entirely"* when the user has a username and there has been no interaction in the last 30 days. You receive a BSUID like `MY.2035200694071263` and nothing else.
+
+A BSUID is a valid identifier for **sending WhatsApp messages**. It is not a phone number. A courier cannot call it, and WooCommerce cannot use it as `billing.phone`.
+
+**The trap.** Almost every integration has a phone normaliser shaped like this:
+
+```javascript
+let n = phone.replace(/\D/g, '');
+if (n.startsWith('0')) n = '6' + n;
+if (!n.startsWith('60')) n = '60' + n;
+```
+
+Feed it a BSUID and you get **`602035200694071263`** — a value that looks like a Malaysian phone number, passes naive validation, and flows all the way to your courier. It does not throw. Nothing appears in your logs. Your seller ships to a customer nobody can reach.
+
+Check your own normaliser now. If it strips non-digits before validating, you have this bug.
+
+### What you must do
+
+**1. Split one field into two.** Most schemas store a single `phone` on the contact and use it for everything. Separate the roles:
+
+| Role | Contents | Used for |
+|---|---|---|
+| Canonical id | Phone **or** BSUID | Sending WhatsApp, matching a contact back |
+| Reachable phone | Always a real phone, may be empty | Courier, invoices, voice calls |
+
+**2. Reject BSUID in phone validation — do not "clean" it.** Return null and treat it as *we have no number*. No number beats a fake one.
+
+```javascript
+// A BSUID is: 2-letter country code, dot, alphanumerics.
+// Parent BSUIDs insert ENT: US.ENT.11815799212886844830
+const BSUID = /^(?:whatsapp:)?[A-Z]{2}\.(?:ENT\.)?[A-Za-z0-9]{1,128}$/;
+
+function toPhone(value) {
+    if (!value) return null;
+    if (BSUID.test(String(value).trim())) return null;  // never normalise a BSUID
+    if (/[A-Za-z]/.test(value)) return null;            // letters mean it is not a phone
+    // ...your existing normalisation...
+}
+```
+
+**3. Ask the customer for a phone number in your order flow.** If your flow collects name, address and postcode but not a phone — because the WhatsApp number was always assumed to be the phone — it now collects an order that cannot be delivered.
+
+Keep the friction low. When you already hold a plausible number, ask them to **confirm** it rather than retype it:
+
+> "Boleh sahkan no 012-345 6789 ni untuk kurier WhatsApp atau call ya?"
+
+Only when you genuinely have nothing should you ask them to type it in:
+
+> "Boleh bagi no telefon untuk kurier WhatsApp atau call masa hantar ya?"
+
+Worth doing even before usernames arrive: customers routinely order from a work WhatsApp, or on behalf of someone else. The delivery number is frequently not the WhatsApp number, and you have probably been shipping with the wrong one already.
+
+**4. If you push to WooCommerce or an ERP,** send the real phone as `billing.phone` and keep the canonical id in a separate meta field for matching webhooks back to the contact. Leave `billing.phone` **empty** rather than filling it with an id — an empty field prompts a human to ask; a fake number sends a courier to a dead end.
+
+**5. Meta's `REQUEST_CONTACT_INFO` template button** (available since early July 2026) is the supported way to ask a customer to share their phone number. Parse the resulting contacts webhook and read the phone from the shared vCard.
+
+### Also required by Meta, not yet in Bridge
+
+These are on our roadmap; you may need them sooner depending on your integration:
+
+- **Sending to a BSUID** — since July 2026 the Messages API accepts `recipient` (BSUID) in place of `to` (phone). Bridge send endpoints currently accept `to` only. Until we ship this, you cannot reply to a customer who has no phone number on file.
+- **`user_id_update` webhook** — Meta regenerates a BSUID when the user changes their phone number. Miss it and your stored id goes stale.
+- **Parent BSUIDs** (`US.ENT.…`) — only relevant for multi-portfolio businesses.
+
+### Timing
+
+Nothing is broken today. Across our own fleet we have recorded **zero** BSUID-only messages so far, and usernames are not yet live in Malaysia. This is preventive work — and it is far cheaper now than during a support queue.
+
+Meta reference: [Business-scoped user IDs](https://developers.facebook.com/documentation/business-messaging/whatsapp/business-scoped-user-ids)
 
 ---
 
