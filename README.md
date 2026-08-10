@@ -97,6 +97,57 @@ Meta reference: [Conversations 2026 announcement](https://developers.facebook.co
 
 **No endpoint changed in this release.** It documents a requirement Meta has already made mandatory, and a data-model trap that will silently corrupt delivery data in most integrations built on this platform — including ours, until we fixed it.
 
+### First, what a BSUID actually is
+
+If you only read one part of this release, read this.
+
+WhatsApp is rolling out **usernames**. A customer can now be reachable as `@aiman` instead of by phone number, and they can hide their phone number from businesses they talk to. Meta still has to identify that person to you somehow — so it gives you a **BSUID**, a stable id scoped to your business:
+
+```
+MY.2026206508304015
+│  └─ up to 128 alphanumeric characters
+└──── ISO country code, then a dot
+```
+
+Multi-portfolio businesses also see a parent form with `ENT` inserted: `US.ENT.11815799212886844830`.
+
+Four things worth knowing:
+
+1. **It is stable.** The same customer keeps the same BSUID with you, even if they change their phone number. That makes it a *better* primary key than a phone number.
+2. **It is scoped to your business.** The same person has a different BSUID with a different business. You cannot look someone up across businesses with it, and you cannot message a BSUID from a phone number belonging to another portfolio.
+3. **You can send to it.** Since July 2026 the Messages API accepts `recipient: "<BSUID>"` in place of `to: "<phone>"`. We tested this against a live number on Graph API v24.0 and Meta accepted it — no version bump needed.
+4. **It is not a phone number.** This is the part that causes damage. A courier cannot ring it, WooCommerce cannot use it as `billing.phone`, and — critically — it will survive a naive phone normaliser and come out the other side looking like a real number.
+
+**When do you get one instead of a phone number?** Bridge already sends `bsuid` alongside `from` on every inbound message, so today you get both. You start receiving the BSUID *without* a phone number when a customer has adopted a username **and** there has been no interaction with your number in the last 30 days. Per Meta, `wa_id`, `from` and `recipient_id` are then *"omitted entirely"*.
+
+So the change arrives gradually, customer by customer — not on a single date.
+
+### Displaying a customer who has no phone number
+
+Most inboxes fall back to showing the phone number when a contact has no name. That fallback breaks in a way users notice immediately.
+
+If your code does something like `contact.name || ('+' + contact.phone)`, a BSUID contact renders as:
+
+```
++MY.2026206508304015
+```
+
+Support staff read that as a broken system and raise a ticket. It is worth checking how often you would hit this: in our own fleet, **45% of contacts have no profile name**, so this is not an edge case.
+
+A display order that holds up:
+
+```
+1. profile name          (Meta still sends contacts[0].profile.name)
+2. collected phone number (once your order flow has asked for it)
+3. "WhatsApp customer · 304015"   <- last 6 characters of the BSUID
+```
+
+Putting the collected phone second matters: as soon as your order flow captures a real number, that contact stops showing an id and starts showing something a human recognises.
+
+**Use 6 characters, not 4.** We checked this against real data before deciding. In our largest workspace, 924 contacts with BSUIDs already produce **41 collisions** on the last 4 characters — different people rendering identically in the list. Extrapolated to that workspace's 2,422 nameless contacts, 4 characters would give roughly 293 collisions; 6 characters brings it to about 3.
+
+Also show the **full BSUID in the contact detail view**, not just the fragment. The fragment is for scanning a list; the full value is for when someone needs to be sure two rows are different people.
+
 ### Action required — stop treating the WhatsApp number as the customer's phone number
 
 Meta states plainly: *"Supporting business-scoped user IDs (BSUID) is **required** for all partners and directly-integrated businesses on the WhatsApp Business Platform."*
