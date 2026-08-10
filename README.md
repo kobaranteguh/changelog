@@ -1,6 +1,6 @@
 # WasapFlow Bridge — Changelog
 
-**Current API Version:** 2.3.0
+**Current API Version:** 2.4.0
 **Last Updated:** 11 August 2026
 
 This changelog covers **two** kinds of change:
@@ -90,6 +90,71 @@ It matters to you for two reasons:
 - Meta now publishes a direct cost comparison between Business Agent and third-party AI solutions. If you resell an AI product, this is a competitor with published pricing.
 
 Meta reference: [Conversations 2026 announcement](https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing/non-template-messages)
+
+---
+
+## 2.4.0 — 11 August 2026
+
+### Added — send to a BSUID with `recipient`
+
+2.3.0 told you Meta had made BSUID support mandatory, and admitted Bridge could not yet send to one. That gap is closed.
+
+Every send endpoint now accepts **`recipient`** (a BSUID) as an alternative to **`to`** (a phone number):
+
+```json
+POST /messages/send
+{
+  "recipient": "MY.2026206508304015",
+  "text": "Terima kasih! Order anda dalam proses."
+}
+```
+
+Applies to `/messages/send`, `/messages/template`, `/messages/media`, `/messages/interactive`, `/messages/location`, `/messages/reaction`, and broadcasts.
+
+**Nothing changes for existing integrations.** When both are supplied, `to` wins — that is Meta's own precedence rule, not ours. Code that sends `to` behaves exactly as before; you only reach for `recipient` when you have no phone number to use.
+
+If neither is supplied you now get a clearer error:
+
+```json
+{ "success": false, "error": { "code": "MISSING_FIELDS",
+  "message": "Either \"to\" (phone number) or \"recipient\" (BSUID) is required" } }
+```
+
+**Broadcasts** accept the same on each contact. A contact may stay a bare phone string, or become an object:
+
+```json
+{ "contacts": [
+    "60123456789",
+    { "recipient": "MY.2026206508304015", "params": ["Aiman"] }
+] }
+```
+
+A contact carrying neither is skipped rather than sent with an empty recipient.
+
+**Verified against Meta, not just documented.** We sent a live message to a BSUID on Graph API v24.0 and Meta accepted it:
+
+```json
+{ "contacts": [{ "input": "MY.2026206508304015", "user_id": "MY.2026206508304015" }],
+  "messages": [{ "id": "wamid.HBgTTVkuMjAyNjIwNjUwODMwNDAxNRUU..." }] }
+```
+
+**One response-shape difference worth knowing:** when you send to a BSUID, Meta's response carries `contacts[0].user_id` and **no `wa_id`**. Code that reads `wa_id` from a send response to record the recipient will get `undefined`. Read `user_id` when you sent to a `recipient`.
+
+### What Meta still does not allow
+
+BSUID recipients are **rejected** for:
+
+- One-tap and zero-tap authentication templates
+- Copy-code authentication templates
+
+Meta returns error **`131062`** — *"Business-scoped User ID (BSUID) recipients are not supported for this message"*.
+
+This is permanent, not a rollout gap. **OTP flows will always need a real phone number.** If you verify users by sending a code over WhatsApp, keep collecting a phone number for that path — a BSUID cannot carry it.
+
+### Still on the roadmap
+
+- **`user_id_update` webhook** — Meta regenerates a BSUID when a user changes their phone number. Until we relay it, a stored BSUID can go stale.
+- **Parent BSUIDs** (`US.ENT.…`) — relevant only to multi-portfolio businesses.
 
 ---
 
