@@ -1,7 +1,7 @@
 # WasapFlow Bridge — Changelog
 
-**Current API Version:** 2.4.0
-**Last Updated:** 11 August 2026
+**Current API Version:** 2.5.0
+**Last Updated:** 16 August 2026
 
 This changelog covers **two** kinds of change:
 
@@ -90,6 +90,73 @@ It matters to you for two reasons:
 - Meta now publishes a direct cost comparison between Business Agent and third-party AI solutions. If you resell an AI product, this is a competitor with published pricing.
 
 Meta reference: [Conversations 2026 announcement](https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing/non-template-messages)
+
+---
+
+## 2.5.0 — 16 August 2026
+
+### Fixed — a BSUID in `to` was sent to Meta as a phone number
+
+**If you are on 2.4.0 and reply to username-only customers, this affects you and you should upgrade.**
+
+2.4.0 added `recipient` for BSUID sends. It did not stop `to` from being forwarded to Meta's *phone number* field, and nothing checked whether the value in `to` was actually a phone number.
+
+So a partner who put a BSUID in `to` — the most natural thing to do, since our own inbound webhook carries `bsuid` and no number at all — got this:
+
+```
+we sent      "MY.1777397056778201"
+Meta received "1777397056778201"
+```
+
+The market prefix was dropped and the remaining digits reached Meta as a phone number belonging to nobody. Meta answered `131026 Message undeliverable` — **after** we had already returned `2xx`. The send looked successful and the message never arrived.
+
+Click-to-WhatsApp ads are where this bites hardest: those leads frequently have a username and no phone number, so every one of them was unreachable through the API while the same reply sent from the WhatsApp Business app went through normally.
+
+**From 2.5.0 all three field names work, and a BSUID is never treated as a phone number:**
+
+```json
+{ "to":        "MY.1777397056778201", "text": "..." }
+{ "user_id":   "MY.1777397056778201", "text": "..." }
+{ "recipient": "MY.1777397056778201", "text": "..." }
+```
+
+`user_id` is new in 2.5.0, for integrations that prefer an explicit field over us detecting the shape of `to`. `recipient` still works.
+
+**Sending to a phone number is unchanged, byte for byte.** When a phone number and a BSUID are both supplied, the phone number wins — Meta's own precedence rule.
+
+### Added — the wamid is now also returned in Meta's own shape
+
+Send responses have always carried the Meta message id as `message_id`. Partners arriving from Meta's Cloud API documentation look for `messages[0].id` instead, find nothing, and conclude no id is returned. Both keys are now present and hold the same value:
+
+```json
+{
+  "success": true,
+  "message_id": "wamid.HBg...",
+  "messages": [ { "id": "wamid.HBg..." } ]
+}
+```
+
+Nothing was removed. If you already read `message_id`, keep reading it.
+
+Store the id: every `message.sent` / `message.delivered` / `message.read` / `message.failed` callback is keyed on it. Without it a `message.failed` — the only way you learn a send did not arrive — cannot be matched to anything.
+
+### Added — authentication templates to a BSUID now fail loudly
+
+Meta refuses one-tap, zero-tap and copy-code authentication templates addressed to a BSUID (error `131062`), and this is permanent: OTP always needs a real phone number. That used to surface as a generic `META_ERROR`. It now returns:
+
+```json
+HTTP 400
+{
+  "success": false,
+  "error": {
+    "code": "AUTH_TEMPLATE_NEEDS_PHONE",
+    "meta_code": 131062,
+    "retryable": false
+  }
+}
+```
+
+Do not retry it. Collect a phone number instead.
 
 ---
 
