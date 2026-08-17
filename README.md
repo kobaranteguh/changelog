@@ -1,7 +1,7 @@
 # WasapFlow Bridge — Changelog
 
-**Current API Version:** 2.5.0
-**Last Updated:** 16 August 2026
+**Current API Version:** 2.6.0
+**Last Updated:** 17 August 2026
 
 This changelog covers **two** kinds of change:
 
@@ -90,6 +90,60 @@ It matters to you for two reasons:
 - Meta now publishes a direct cost comparison between Business Agent and third-party AI solutions. If you resell an AI product, this is a competitor with published pricing.
 
 Meta reference: [Conversations 2026 announcement](https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing/non-template-messages)
+
+---
+
+## 2.6.0 — 17 August 2026
+
+### Security — stop putting your API key in a browser URL
+
+Until now the way to start onboarding was:
+
+```
+https://officialapi.wasapflow.com/bridge/connect?partner_key=wf_live_…
+```
+
+That is your **full API credential**, the same key that authorises every send,
+every WABA and every client you manage — sitting in a URL. From there it reaches
+your client's address bar, their browser history, the `Referer` header their
+browser sends to other hosts, and our own nginx access logs in plain text.
+
+We found it in our logs while investigating an unrelated onboarding failure. No
+misuse has been detected, and no partner did anything wrong — this was our design.
+
+**The new way is server-to-server:**
+
+```http
+POST /connect/session
+x-partner-key: wf_xxx
+
+{ "display_name": "Client Name", "state": "your-own-client-id-123" }
+```
+
+```json
+{
+  "success": true,
+  "connect_url": "https://officialapi.wasapflow.com/bridge/connect?token=93d29ead…",
+  "expires_in": 1800
+}
+```
+
+Send your client to `connect_url`. The token is scoped to that one onboarding and
+expires in 30 minutes; it cannot be used to call any other endpoint.
+
+**The old form still works and has no removal date** — nothing breaks today. But
+please migrate, and once you have, rotate the key in the partner portal: a
+credential that has been through a browser should be treated as exposed.
+
+### Added — `state` is now returned to you
+
+`POST /connect/session` accepts an optional `state` (max 255 characters, opaque to
+us). It comes back untouched when the connection completes, both in the
+`postMessage` payload and in the `/clients/register-from-code` response body, so
+you can match the finished connection to your own client record.
+
+Before 2.6.0 the connect page accepted a `state` query parameter and discarded it
+without telling anyone. If you passed one and it never came back, that is why.
 
 ---
 
