@@ -1,6 +1,6 @@
 # WasapFlow Bridge — Changelog
 
-**Current API Version:** 2.6.0
+**Current API Version:** 2.6.1
 **Last Updated:** 17 August 2026
 
 This changelog covers **two** kinds of change:
@@ -93,6 +93,56 @@ Meta reference: [Conversations 2026 announcement](https://developers.facebook.co
 
 ---
 
+## 2.6.1 — 17 August 2026
+
+Three fixes, all from one partner's integration questions. Every one of them was
+something we had got wrong rather than something they had.
+
+### Fixed — the popup now tells you when onboarding is cancelled or fails
+
+The connect popup only ever posted `WASAPFLOW_CONNECT_SUCCESS`. If the customer
+dismissed Meta's dialog, or registration was rejected, the popup showed a message
+to the customer and told your window **nothing**.
+
+So an integration waiting on an event stayed in "connecting…" until the customer
+closed the popup by hand, with no way to know whether they had given up or it had
+broken. Cancel and error handlers written against earlier versions never fired.
+
+Two new messages, both carrying `state` like the success one:
+
+| `type` | Extra fields |
+|---|---|
+| `WASAPFLOW_CONNECT_CANCEL` | `reason` |
+| `WASAPFLOW_CONNECT_ERROR` | `message`, `code` |
+
+Keep any `popup.closed` polling you added to work around this — a customer can
+still close the window before reaching either path.
+
+### Fixed — onboarding no longer dies at the last step
+
+The connect token was checked twice: when the page opened, and again when
+registration completed. A customer who opened the popup at minute 29 and worked
+through Meta's flow — portfolio, number, verification code — arrived at the final
+call after expiry and was rejected, losing everything they had just done. With
+the bug above, that rejection was also silent.
+
+Completion is now allowed up to 30 minutes past expiry. Opening is unchanged and
+still strict: that is the moment a leaked link could be reused, and it is the one
+worth guarding. Meta's `code` is short-lived and single-use, so accepting it a
+little late costs nothing.
+
+### Fixed — rotating a partner key now revokes unfinished connect sessions
+
+Connect sessions reference the partner, not the key, so rotating a key left every
+unfinished session working for up to 30 more minutes. Since a rotation almost
+always means the old key is considered exposed, that defeated the point.
+
+Rotation now deletes unconsumed, unexpired sessions and reports how many. WABAs
+already connected are untouched — each holds its own Meta token, so messaging
+does not stop.
+
+---
+
 ## 2.6.0 — 17 August 2026
 
 ### Security — stop putting your API key in a browser URL
@@ -132,8 +182,12 @@ Send your client to `connect_url`. The token is scoped to that one onboarding an
 expires in 30 minutes; it cannot be used to call any other endpoint.
 
 **The old form still works and has no removal date** — nothing breaks today. But
-please migrate, and once you have, rotate the key in the partner portal: a
-credential that has been through a browser should be treated as exposed.
+please migrate, and once you have, ask us to rotate the key: a credential that
+has been through a browser should be treated as exposed.
+
+**Correction (2.6.1):** this originally said to rotate the key "in the partner
+portal". There is no self-serve rotation — it is a support request. Sorry for
+sending anyone looking for a button that does not exist.
 
 ### Added — `state` is now returned to you
 
