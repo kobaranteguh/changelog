@@ -1,7 +1,7 @@
 # WasapFlow Bridge — Changelog
 
-**Current API Version:** 2.6.1
-**Last Updated:** 17 August 2026
+**Current API Version:** 2.7.0
+**Last Updated:** 20 August 2026
 
 This changelog covers **two** kinds of change:
 
@@ -90,6 +90,64 @@ It matters to you for two reasons:
 - Meta now publishes a direct cost comparison between Business Agent and third-party AI solutions. If you resell an AI product, this is a competitor with published pricing.
 
 Meta reference: [Conversations 2026 announcement](https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing/non-template-messages)
+
+---
+
+## 2.7.0 — 20 August 2026
+
+All of this came from one partner asking six questions. Nothing here is new
+capability — it is capability that already worked and was never written down,
+plus one gap we found while checking.
+
+### Documented — catalog and product messages
+
+`POST /messages/interactive` sends your `interactive` object to Meta unchanged,
+so `product`, `product_list` and `catalog_message` have always worked. Nobody
+knew, because `catalog_id` and `product_retailer_id` appeared nowhere in these
+docs. They do now.
+
+`catalog_id` and `product_retailer_id` come from you. We do not store client
+catalogues, inject ids, or validate them.
+
+There is no catalogue *management* API and none is planned — no `/catalog`, no
+`/products`. Bridge sends messages that reference a catalogue and relays the
+orders that come back. To read products or stock, use Meta's Catalog API directly.
+
+### Documented — `raw.message` carries everything
+
+The flat fields on `message.received` are a convenience layer. `data.raw.message`
+is Meta's own message object with nothing removed, which is where these live:
+
+| | |
+|---|---|
+| Cart / order | `raw.message.order` |
+| Product enquiry | `raw.message.interactive` |
+| Reply context | `raw.message.context` |
+
+**Watch the trap:** for `order` and `interactive`, the flat `text` is `null`.
+Integrations that only read `text` see a cart as an empty message.
+
+### Documented — the two media paths are opposites
+
+`POST /messages/media` with `media.link` is a **passthrough**: Meta fetches your
+URL, and every limit is Meta's. `POST /media/upload` is the reverse — **we**
+fetch the file and upload it to Meta, returning a reusable `media_id`. Similar
+names, opposite mechanics. Use the second for anything sent repeatedly.
+
+### Changed — media endpoints now obey the rate limit, and downloads are logged
+
+`GET /media/{id}` and `POST /media/upload` bypassed the rate limiter completely.
+They now count against your account's `rate_limit_per_sec` like every other
+endpoint.
+
+**This closes a gap rather than tightening a limit.** It is the same limit
+already applied everywhere else (200/s by default), and real usage is nowhere
+near it — `/media/upload` averages under 6 calls a day across all partners.
+
+Media downloads were also not logged at all, so the traffic was invisible to us.
+They now appear as `/media/download` in your usage. We added the logging before
+the limit deliberately: setting a threshold on traffic you cannot measure is a
+guess.
 
 ---
 
