@@ -1,6 +1,6 @@
 # WasapFlow Bridge — Changelog
 
-**Current API Version:** 2.7.0
+**Current API Version:** 2.8.0
 **Last Updated:** 20 August 2026
 
 This changelog covers **two** kinds of change:
@@ -90,6 +90,68 @@ It matters to you for two reasons:
 - Meta now publishes a direct cost comparison between Business Agent and third-party AI solutions. If you resell an AI product, this is a competitor with published pricing.
 
 Meta reference: [Conversations 2026 announcement](https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing/non-template-messages)
+
+---
+
+## 2.8.0 — 20 August 2026
+
+Two requirements in Meta's own documentation that we had never implemented.
+Both were found by re-reading the docs rather than the code, after a client
+number failed onboarding four times in a row and we could not say why.
+
+### Added — Embedded Signup session logging
+
+Meta's implementation guide lists a `WA_EMBEDDED_SIGNUP` message listener as a
+required step, and the Coexistence guide is blunter still: *"You must use
+Embedded Signup with session logging."* Our connect page did not have one.
+
+The cost was not theoretical. Onboarding runs in the customer's browser against
+Meta; our server is only involved at the very end. Without that listener, an
+onboarding that failed inside Meta's dialog left **no trace at all** — we saw
+the page open and never learned whether it succeeded, was abandoned, or died
+halfway. One partner tried ten times over two weeks before anyone noticed.
+
+Now recorded, and readable:
+
+```http
+GET /onboarding/events
+x-partner-key: wf_xxx
+```
+
+Each event carries `current_step`, `error_code`, `error_message` and Meta's own
+`meta_session_id` — the id Meta Direct Support asks for first.
+
+The popup also posts richer messages now: `WASAPFLOW_CONNECT_ERROR` carries
+`meta_session_id` and `current_step`, and abandonment reports the step it was
+abandoned at.
+
+### Fixed — Coexistence contact and history sync was never triggered
+
+After a Coexistence onboarding, Meta does not send the customer's contacts and
+chat history on its own. You have to ask:
+
+```
+POST /{phone_number_id}/smb_app_data   { "sync_type": "smb_app_state_sync" }
+POST /{phone_number_id}/smb_app_data   { "sync_type": "history" }
+```
+
+And the window is hard: *"you have 24 hours to synchronize their messaging
+history, otherwise they must be offboarded and they must complete the flow
+again."*
+
+We never called it. The evidence was in our own logs: 49 Coexistence clients,
+26,877 `message.echo` events — and `message.history` delivered **twice**,
+contacts **once**. Echo is automatic; history and contacts must be requested,
+and nobody was requesting them.
+
+Registration now triggers both, and the result comes back on the
+`/clients/register-from-code` response as `coexistence_sync` so you can see
+whether it worked while the customer is still in front of you.
+
+**If you onboarded Coexistence clients before 20 August 2026**, their contacts
+and six months of chat history were never synced and their 24-hour window has
+closed. Recovering it means offboarding and redoing the flow. Contact us and we
+will work through the list with you.
 
 ---
 
