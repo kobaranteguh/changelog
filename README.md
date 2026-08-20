@@ -148,10 +148,16 @@ Registration now triggers both, and the result comes back on the
 `/clients/register-from-code` response as `coexistence_sync` so you can see
 whether it worked while the customer is still in front of you.
 
-**If you onboarded Coexistence clients before 20 August 2026**, their contacts
-and six months of chat history were never synced and their 24-hour window has
-closed. Recovering it means offboarding and redoing the flow. Contact us and we
-will work through the list with you.
+**For clients onboarded before 20 August 2026, we are not going to guess.**
+Their sync was never triggered — that part is certain. Whether it can still be
+triggered now is not: a test call against an older client came back with a
+generic permission error rather than anything about the window, so we cannot
+yet say whether the cause is the elapsed time, a token scope, or something
+else. We are checking with Meta.
+
+You will get a definite answer rather than an assumption. If you would like your
+existing Coexistence clients looked at individually in the meantime, ask and we
+will go through them with you.
 
 ---
 
