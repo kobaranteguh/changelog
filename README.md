@@ -1,7 +1,7 @@
 # WasapFlow Bridge — Changelog
 
-**Current API Version:** 2.8.0
-**Last Updated:** 20 August 2026
+**Current API Version:** 2.9.0
+**Last Updated:** 21 August 2026
 
 This changelog covers **two** kinds of change:
 
@@ -90,6 +90,220 @@ It matters to you for two reasons:
 - Meta now publishes a direct cost comparison between Business Agent and third-party AI solutions. If you resell an AI product, this is a competitor with published pricing.
 
 Meta reference: [Conversations 2026 announcement](https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing/non-template-messages)
+
+---
+
+## 2.9.0 — 21 August 2026
+
+**32 new endpoints.** Bridge exposed 13 of Meta's ~38 Cloud API surfaces. The
+other 25 were never missing — they were simply never asked for, so a partner who
+needed one emailed us and **we** ran the call on their behalf. That is not a
+gateway, that is a help desk. Anything reachable with the token we already hold
+should be reachable by the person who owns the WABA.
+
+This audit started as a question about which Meta endpoints we cover. It ended
+as a list of things partners had been working around.
+
+### How this list was built
+
+Every endpoint below was **probed live against a real WABA before it was
+written**, not copied out of Meta's reference. Two documented APIs failed that
+test and are deliberately **not** exposed:
+
+| API | What Meta actually returns on v24.0 |
+|---|---|
+| Bot Details | `(#100) Tried accessing nonexisting field (bot_details)` |
+| Message History Events | `(#2500) Unknown path components: /message_history_events` |
+
+An endpoint that always errors is worse than one that does not exist, because it
+looks like our bug and you will spend an afternoon proving it isn't.
+
+### Added — QR codes & short links
+
+`GET`, `POST /qr-codes` · `PUT`, `DELETE /qr-codes/{code}`
+
+A QR code carries a pre-filled message: the customer scans, their WhatsApp opens
+with the text already typed. Updating that text does **not** change the image or
+the link, so posters and stickers already in the wild keep working.
+
+### Added — Conversational automation
+
+`GET`, `POST /conversational-automation`
+
+Ice breakers (up to 4 tappable questions on the first chat), `/` commands, and
+the welcome message. Previously WhatsApp Manager only — which meant a partner
+running hundreds of numbers could not do it at all.
+
+### Added — Blocking
+
+`GET`, `POST`, `DELETE /blocked`
+
+Meta's limits are the part worth reading: you can only block someone who messaged
+you in the **last 24 hours**, 1,000 per request, 64,000 total. Failures come back
+**per number** — a `200` with a populated `failed` array is a partial success,
+not a success. Read that array.
+
+### Added — Commerce settings
+
+`GET`, `POST /commerce-settings`
+
+Show or hide the catalog and the cart per number. This is the question one of you
+asked us in July and we answered "not possible". It was possible; we just hadn't
+exposed it.
+
+### Added — Call & storage settings
+
+`GET`, `POST /settings`
+
+Calling configuration and No-Storage mode. We return the whole node rather than a
+chosen list of fields, because Meta adds keys here without notice and a whitelist
+would hide the new ones from you.
+
+### Added — Phone number status
+
+`GET /phone-status`
+
+Official Business Account, two-step verification state, display-name review
+status, quality, throughput and tier in one call. Note `platform_type` reads
+`CLOUD_API` for Coexistence numbers too — **`is_on_biz_app` is the discriminator**.
+
+### Added — WABA details, audit log, assigned users, solutions
+
+`GET /waba` · `GET /waba/activities` · `GET /waba/assigned-users` · `GET /waba/solutions` · `GET /schedules`
+
+`/waba/activities` is the one to reach for when a client asks why a template
+disappeared or why their messaging limit moved.
+
+`primary_funding_id` is deliberately absent from `/waba`. It needs a billing
+permission the onboarding token never holds, and Meta rejects the **entire**
+request with code 10 when a single requested field is not permitted — one
+unreachable field would have wiped out the other eleven. Each field name in that
+list was tested individually.
+
+### Added — Flows, read-only
+
+`GET /flows` · `GET /flows/{id}`
+
+List and inspect. Creating a Flow needs an endpoint you host plus a registered
+encryption key pair; that is a separate integration, not a proxy call, and
+shipping half of it would leave you believing Flows were fully supported.
+
+### Added — Phone number lifecycle
+
+`POST /phone/request-code` · `/phone/verify-code` · `/phone/two-step` · `/phone/register` · `/phone/deregister`
+
+Irreversible actions now require `{"confirm": true}` and return
+`400 CONFIRMATION_REQUIRED` without it. Not security theatre — these calls end up
+inside your scripts, and one mis-targeted loop could disconnect every number you
+manage. The flag forces the intent to be written at the call site.
+
+### Fixed — two-step PIN no longer breaks re-registration silently
+
+Bridge needs the two-step PIN to re-register a number after a migration or
+recovery, and we only ever held **one platform PIN** from our environment. A
+partner who changed the PIN in WhatsApp Manager broke our re-registration and
+nothing said so — it failed later, during a recovery, when it mattered most.
+
+`POST /phone/two-step` now stores your PIN encrypted against the client, and
+`/phone/register` reads it before falling back to the platform PIN. **If you have
+ever changed a PIN outside Bridge, set it here once.**
+
+### Added — Calling
+
+`POST /calls` — actions `connect`, `pre_accept`, `accept`, `reject`, `terminate`.
+
+A deliberate passthrough. Every call action carries an SDP offer or answer
+generated by your WebRTC stack, and Bridge cannot validate or reshape SDP without
+being a media server, which it is not. Enable calling first via `POST /settings`
+with `calling.status: "ENABLED"`.
+
+### Added — Groups
+
+`GET`, `POST /groups` · `GET`, `DELETE /groups/{id}` · `DELETE /groups/{id}/participants`
+
+**Groups must be enabled on your number by Meta.** If it is not, Meta returns
+`131000 "Something went wrong"` — a message that says nothing about the actual
+cause. We confirmed this against a live WABA while building these endpoints, so
+it is documented here rather than left for you to discover. Bridge passes Meta's
+status through unchanged; **131000 here is not a Bridge fault.**
+
+You cannot add participants directly — Meta's design, not our limitation. Create
+the group, send the invite link, people join themselves. You can remove them.
+
+### Changed — Meta errors now carry their codes
+
+Error responses from these endpoints include `meta_code`, `meta_subcode` and
+`details` alongside `message`. Previously you had to infer from message text
+alone, and that text is what separates "retry this" from "never retry this".
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "META_ERROR",
+    "message": "(#131000) Something went wrong",
+    "meta_code": 131000,
+    "meta_subcode": null,
+    "details": null
+  }
+}
+```
+
+### Changed — outbound calls now use Graph API v26.0
+
+Bridge called Meta on **v24.0**. It now calls **v26.0**, the current version.
+
+Why it was worth doing carefully rather than quickly: the version was written
+directly into the URL in **125 places** across Bridge and the CRM, while 19 other
+places read it from an environment variable. Those two groups were never in sync.
+Setting the environment variable would have moved only 19 of them — messages,
+templates, profile and media would have stayed on the old version while
+registration and sync jumped to the new one. Half the integration speaking two
+dialects at once, with nothing to tell us.
+
+All 144 call sites now read one constant. Raising the version is a one-line edit.
+
+Before switching we compared responses across v24, v25 and v26 for every edge
+Bridge uses — **all identical**. v26's breaking changes are confined to Marketing
+API, Ads, Commerce Order Management and Rights Manager; none touch WhatsApp
+messaging. v27 does not exist yet.
+
+**Nothing changes for you.** Request and response shapes are the same. This is
+recorded because the version now appears in error traces and support logs.
+
+### Changed — webhook fields now deliver v26.0 payloads
+
+All **32 webhook fields** moved from v24.0 to v26.0 at the same time. Three
+(`business_username_updates`, `standby`, `messaging_handovers`) were already on
+v26.0 because those fields did not exist in v24 — Meta forces the earliest version
+that has them.
+
+A webhook field's version controls the shape of the payload Meta **sends you**, and
+Meta has changed webhook payloads across versions before — v24 itself dropped the
+`conversation` object from status webhooks. So this was done with a recorded
+rollback of the previous subscription, and verified end-to-end rather than assumed:
+
+| Check | Result |
+|---|---|
+| Subscription still active, callback unchanged | Yes — 32/32 fields on v26.0 |
+| Webhooks still arriving | 995 processed in the first 5 minutes |
+| Payloads still **parsing** (not just arriving) | 58 messages written to the database |
+| New unrecognised field names | None |
+| New parse errors | None |
+
+The third row is the one that matters. A payload that changed shape still arrives
+with a 200 — it fails silently *inside*, which is why "webhooks are coming through"
+is not evidence on its own.
+
+**Nothing changes for you.** Bridge normalises every webhook into its own event
+envelope (`message.received`, `message.delivered`, …), so your integration never
+saw Meta's raw field versions and does not see this change either.
+
+### Note — usage metering
+
+All 32 endpoints are logged to your usage records under their own endpoint names,
+visible via `GET /usage`. They are not billed as messages. `/calls` counts against
+your `rate_limit_per_sec`; the rest do not.
 
 ---
 
