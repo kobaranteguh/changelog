@@ -299,6 +299,54 @@ is not evidence on its own.
 envelope (`message.received`, `message.delivered`, …), so your integration never
 saw Meta's raw field versions and does not see this change either.
 
+### Removed — the SDKs
+
+The Node.js, Python and PHP client libraries are gone from this documentation.
+
+**Nobody was using them.** Checking a month of access logs, every partner call
+already arrives from an ordinary HTTP client — Guzzle, `node` fetch, axios,
+httpx, Deno. Not one request came from a WasapFlow SDK. They were documentation
+we maintained and nobody installed.
+
+They were also a liability. The SDKs wrapped 13 endpoints; 2.9.0 brought the
+total to 68. A client library that lags the API teaches you the API is smaller
+than it is — the "not supported by Bridge" workarounds we asked you to search
+for in (g) exist partly because of this.
+
+**Nothing to migrate.** If you somehow have one installed it will keep working,
+but it is unsupported and does not know about the 32 new endpoints. Replace it
+with the wrapper function in the guide — it is about twenty lines and covers
+every endpoint.
+
+### Fixed — a wrong response example in the docs
+
+The guide showed `POST /clients/register` returning camelCase
+(`wabaId`, `phoneNumberId`, `displayName`, `registeredAt`). **It does not.** That
+was the old SDK's shape, not the API's, and anyone who wrote against that example
+was reading fields that are never present.
+
+The API returns `snake_case` everywhere, requests and responses alike:
+
+```json
+{
+  "success": true,
+  "client": {
+    "id": 42,
+    "waba_id": "123456789",
+    "phone_number_id": "987654321",
+    "display_name": "My Client Business",
+    "quality_rating": "GREEN",
+    "tier": "TIER_1K",
+    "messaging_limit_tier": "TIER_1K",
+    "status": "active",
+    "registered_at": "2026-05-12T10:00:00Z"
+  }
+}
+```
+
+If your registration code reads `client.wabaId` and silently stores `undefined`,
+this is why. There is no camelCase form of this API anywhere.
+
 ### Note — usage metering
 
 All 32 endpoints are logged to your usage records under their own endpoint names,
