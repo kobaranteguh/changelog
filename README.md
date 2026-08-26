@@ -1,7 +1,7 @@
 # WasapFlow Bridge — Changelog
 
-**Current API Version:** 2.9.0
-**Last Updated:** 21 August 2026
+**Current API Version:** 2.9.1
+**Last Updated:** 27 August 2026
 
 This changelog covers **two** kinds of change:
 
@@ -90,6 +90,72 @@ It matters to you for two reasons:
 - Meta now publishes a direct cost comparison between Business Agent and third-party AI solutions. If you resell an AI product, this is a competitor with published pricing.
 
 Meta reference: [Conversations 2026 announcement](https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing/non-template-messages)
+
+---
+
+## 2.9.1 — 27 August 2026
+
+### Fixed — quoted replies were silently dropped
+
+Sending `context` did nothing. You got a `200`, the message arrived, and the
+reply tag was gone — no error, no warning, nothing in your logs to search for.
+
+The cause: every send endpoint builds Meta's payload from scratch and copies
+only the fields it knows about. `context` was not one of them, so a partner
+sending Meta's **correct** shape had it discarded before the request ever left
+us. One partner spent time trying other field names — `context_message_id`,
+`reply_to`, `quoted` — before asking. None of them worked either, because the
+problem was never the name.
+
+**Now supported on all five send paths:** `/messages/send`,
+`/messages/template`, `/messages/media`, `/messages/interactive`,
+`/messages/location`.
+
+```json
+POST /bridge/v1/messages/send
+{
+  "to": "60123456789",
+  "text": "Yes, that one is in stock.",
+  "context": { "message_id": "wamid.HBgMNjAxMTY0NjI1MTA3FQIAERgS..." }
+}
+```
+
+Three shapes are accepted, because all three are reasonable guesses and
+rejecting two of them just repeats the same failure in a different costume:
+
+| Field | Example |
+|---|---|
+| `context` (Meta's own shape) | `{ "context": { "message_id": "wamid..." } }` |
+| `context_message_id` | `{ "context_message_id": "wamid..." }` |
+| `reply_to` | `{ "reply_to": "wamid..." }` |
+
+The wamid is the `message_id` from a send response, or from an inbound webhook
+(`data.message_id`). If both `context` and an alias are present, `context` wins.
+
+### Changed — a broken `context` is now an error, not a silent send
+
+A `context` you supplied but we cannot parse returns **`400 INVALID_PAYLOAD`**
+instead of sending the message untagged:
+
+```json
+{ "success": false,
+  "error": { "code": "INVALID_PAYLOAD",
+             "message": "context must be {\"message_id\": \"wamid...\"} — or send context_message_id / reply_to as a string." } }
+```
+
+This is deliberate and it is the actual lesson of the bug. The original failure
+was not a wrong tag — it was **a failure that looked like a success**. An empty
+`context: {}`, a blank `reply_to`, or a non-string `message_id` now tells you so
+at the call site rather than in a customer's chat thread three weeks later.
+
+Do not "fix" `INVALID_PAYLOAD` inside a retry wrapper. It will not succeed on
+the second attempt; the body needs correcting.
+
+### Note — nothing else changed
+
+Sends without `context` behave exactly as before. If you never used quoted
+replies, this release is a no-op for you. If you built a workaround for the
+missing tag, you can remove it.
 
 ---
 
