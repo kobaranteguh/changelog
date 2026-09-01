@@ -1,7 +1,7 @@
 # WasapFlow Bridge — Changelog
 
-**Current API Version:** 2.9.1
-**Last Updated:** 27 August 2026
+**Current API Version:** 2.9.2
+**Last Updated:** 1 September 2026
 
 This changelog covers **two** kinds of change:
 
@@ -90,6 +90,64 @@ It matters to you for two reasons:
 - Meta now publishes a direct cost comparison between Business Agent and third-party AI solutions. If you resell an AI product, this is a competitor with published pricing.
 
 Meta reference: [Conversations 2026 announcement](https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing/non-template-messages)
+
+---
+
+## 2.9.2 — 1 September 2026
+
+### Fixed — 3D Secure was reported to you as a declined card
+
+If connecting a WABA ever told you **"your card cannot be charged, please update
+your payment method"**, your card may never have been the problem.
+
+Stripe's real error, sitting in our own logs, said so:
+
+```
+Payment for this subscription requires additional user action, but the
+requested payment behavior doesn't save the invoice or PaymentIntent.
+Retry the request with payment_behavior=allow_incomplete...
+```
+
+Stripe told us the fix in the error text. We showed you "card declined" instead.
+One partner saved **five cards across four attempts** — two different cards —
+chasing a fault that did not exist. Malaysian cards almost all require 3D Secure
+under the Bank Negara mandate, so this blocked our largest market by design.
+
+Three places carried the same wrong assumption — that *needs authentication* and
+*card refused* are the same event:
+
+| | Was | Now |
+|---|---|---|
+| Subscription creation | `error_if_incomplete` — Stripe throws rather than returning an invoice when the bank wants 3DS | `allow_incomplete` — the off-session charge is tried first, authentication requested only when the bank demands it |
+| `invoice.payment_action_required` | Treated as `payment_failed`; its own comment read *"block immediately, same as payment_failed"* | Sending still stops (the invoice is genuinely unpaid), but we record the payment link instead of a card failure that never happened |
+| A WABA in `billing_failed` | **Nothing** ever moved it back. Not one query in the codebase | `invoice.paid` revives it automatically and logs which |
+
+That third row was its own bug: paying after a failed charge did not get your
+WABA back. It could not, because no code path existed to restore it.
+
+### Changed — a new error code when payment needs your approval
+
+```json
+{ "success": false,
+  "error": {
+    "code": "PAYMENT_ACTION_REQUIRED",
+    "message": "Your bank requires 3D Secure authentication for this payment...",
+    "payment_url": "https://invoice.stripe.com/i/acct_.../live_..."
+  } }
+```
+
+Still HTTP `402` — the payment genuinely has not happened. What changes is what
+you do about it: **authenticate**, not replace your card. Open `payment_url`,
+confirm with your bank (or enter a different card on that page), and the WABA
+activates by itself when the invoice is paid.
+
+`PAYMENT_FAILED` still exists and still means what it says: the card was
+actually refused.
+
+### If you have a WABA stuck from a failed attempt
+
+Contact us. We will send you a payment link for it, and it will come back on its
+own once paid — no need to reconnect or re-onboard.
 
 ---
 
