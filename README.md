@@ -1,7 +1,7 @@
 # WasapFlow Bridge — Changelog
 
 **Current API Version:** 2.9.2
-**Last Updated:** 1 September 2026
+**Last Updated:** 4 November 2026
 
 This changelog covers **two** kinds of change:
 
@@ -90,6 +90,25 @@ It matters to you for two reasons:
 - Meta now publishes a direct cost comparison between Business Agent and third-party AI solutions. If you resell an AI product, this is a competitor with published pricing.
 
 Meta reference: [Conversations 2026 announcement](https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing/non-template-messages)
+
+---
+
+## Support Tickets API — 4 November 2026
+
+### Added — Support Tickets
+
+You can now open and follow up support tickets from your own system or AI agent, not only from the portal:
+
+- `POST /bridge/v1/tickets` — open a ticket (`subject`, `message`, optional `category`, `priority`, `waba_id`, `phone_number_id`, `diagnostics`).
+- `GET /bridge/v1/tickets?status=` — list your tickets.
+- `GET /bridge/v1/tickets/{uid}` — read a ticket and its messages.
+- `POST /bridge/v1/tickets/{uid}/reply` — reply; a closed ticket is reopened.
+
+A ticket with the same subject opened in the last 24 hours and not closed is deduplicated (200, `"deduplicated": true`). Limit: 20 new tickets per 24 hours (`429 QUOTA_EXCEEDED`). You receive an email when we reply. Full reference: [Support Tickets](?tab=api#support-tickets).
+
+### Changed — SDK cards removed from the portal Docs page
+
+The Node/Python/PHP SDK cards were removed from the portal. Call the REST API directly, or give your AI tool the API reference — that is the supported path.
 
 ---
 
