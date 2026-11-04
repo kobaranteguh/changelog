@@ -93,6 +93,16 @@ Meta reference: [Conversations 2026 announcement](https://developers.facebook.co
 
 ---
 
+## MCP server & OpenAPI spec — 4 November 2026
+
+**Added — additive, nothing existing changed.**
+
+- **MCP server** at `https://officialapi.wasapflow.com/bridge/mcp` (Streamable HTTP). Connect it in Claude Code, Cursor, Codex, Claude Desktop or VS Code with header `x-partner-key`. 15 tools: docs search and reading (no key needed), list numbers, number status, Connect WhatsApp link, send text and template, templates, failed webhooks and retry, usage, support tickets, and `bridge_call_api` for any endpoint. See [Use Bridge From Your AI Tool (MCP)](https://github.com/kobaranteguh/api#use-bridge-from-your-ai-tool-mcp).
+- **OpenAPI 3.1 spec** at `https://officialapi.wasapflow.com/bridge/openapi.json` — for code generators, GPT Actions and API tools.
+- **`llms-full.txt`** at `https://partner.wasapflow.com/llms-full.txt` — product facts, API reference and partner guide in one file for AI tools.
+
+---
+
 ## Support Tickets API — 4 November 2026
 
 ### Added — Support Tickets
