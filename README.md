@@ -93,6 +93,70 @@ Meta reference: [Conversations 2026 announcement](https://developers.facebook.co
 
 ---
 
+## Meta platform update — 4 November 2026
+
+Bridge now covers Meta's October–November 2026 WhatsApp changes. **Everything is
+additive: a request that worked yesterday sends exactly the same call to Meta
+today.**
+
+### Added — Marketing Messages API (`POST /messages/marketing`)
+
+Send MARKETING templates through Meta's Marketing Messages API for WhatsApp
+(formerly MM Lite) — quality-based delivery and marketing metrics. Same auth,
+`x-waba-id` / `x-phone-number-id` scoping, recipient rules and response as
+`/messages/template`, plus optional `product_policy` (`CLOUD_API_FALLBACK` |
+`STRICT`) and `message_activity_sharing`. Not onboarded yet? Without `STRICT`,
+Meta delivers through Cloud API. `GET /marketing-messages/status` returns the
+WABA's `marketing_messages_onboarding_status` and how to enable it. New error
+codes `MARKETING_MESSAGES_DISABLED` (Meta `131063`) and `MM_NOT_ONBOARDED`.
+Also an MCP tool: `bridge_send_marketing`.
+
+### Added — Direct Send pass-through
+
+`POST /messages/send`, `/messages/media` and `/messages/interactive` accept
+optional `category` (`utility` | `authentication`), `template_name`
+(utility only, `^[a-z0-9_]+$`, ≤ 512) and `ttl` (seconds; utility 30–43200,
+authentication 30–900), forwarded as Meta's `category`,
+`direct_send_config.template_name` and `ttl_seconds`. Bridge validates them
+locally and names Meta's Direct Send errors: `DIRECT_SEND_NOT_ENABLED`,
+`DIRECT_SEND_BLOCKED` (`139200`), `DIRECT_SEND_LIMIT_REACHED` (`131064`),
+`TEMPLATE_NAME_CONFLICT` (`132021`). Utility Direct Send needs a 100,000 or
+unlimited messaging limit; authentication is alpha.
+
+### Added — OTP messages (copy code, one-tap, zero-tap)
+
+`POST /messages/interactive` with `category: "authentication"` and an `otp`
+button, checked against Meta's documented rules before sending.
+
+### Changed — static WebP is now a normal image
+
+Meta accepts static WebP in `image` messages (5 MB) since 30 October 2026.
+`POST /media/upload` with `mime_type: "image/webp"` and `"type": "image"` now
+allows 5 MB (animated WebP is refused for images). Without `type`, or with
+`"type": "sticker"`, the sticker limits (100 KB static / 500 KB animated) still
+apply — unchanged from before.
+
+### Added — group read receipts, call `messaging_account_id`
+
+`POST /messages/read` works for group messages (each message must be marked
+separately). `POST /calls` accepts Meta's optional `messaging_account_id`.
+
+### Changed — hosted connect popup uses Embedded Signup v5
+
+`/bridge/connect` now launches Embedded Signup **v5** (Coexistence on by
+default) and reads v5 session info (`messaging_account_ids`, `is_on_biz_app`).
+`GET /embedded-signup/config` returns `es_version` and the matching `extras` —
+pass `extras` through unchanged. v4 still works if you self-host the popup.
+`GET /onboarding/events` fills `waba_id` from `messaging_account_ids` and
+records Meta's finish `event`.
+
+### Note — passed through unchanged
+
+Status webhooks may carry Meta's new `pricing.subtype` (free service messages
+for eligible governments and non-profits); Bridge forwards it as received.
+
+---
+
 ## MCP server & OpenAPI spec — 4 November 2026
 
 **Added — additive, nothing existing changed.**
